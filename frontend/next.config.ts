@@ -1,0 +1,21 @@
+import type { NextConfig } from 'next'
+
+// const backendUrl = (
+//   process.env.BACKEND_URL ?? "http://localhost:8000"
+// ).replace(/\/$/, "");
+
+const nextConfig: NextConfig = {
+  output: 'standalone',
+  reactStrictMode: true,
+  poweredByHeader: false,
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: "/api/:path*",
+  //       destination: `${backendUrl}/api/:path*`,
+  //     },
+  //   ];
+  // },
+};
+
+export default nextConfig;
