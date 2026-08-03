@@ -25,7 +25,7 @@ services:
           "CMD",
           "bun",
           "-e",
-          "fetch('http://127.0.0.1:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"
+          "fetch('http://127.0.0.1:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
         ]
       interval: 15s
       timeout: 5s
@@ -40,7 +40,7 @@ services:
         <<: *build-proxy
     restart: unless-stopped
     environment:
-      DB_CONNECTION: pgsql
+      DB_CONNECTION: mysql
       DB_HOST: postgres
       DB_PORT: 5432
       DB_DATABASE: tasken
@@ -55,32 +55,38 @@ services:
       test:
         [
           "CMD-SHELL",
-          "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 2>/dev/null | grep -q pong"
+          "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 2>/dev/null | grep -q pong",
         ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 15s
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
 
-  postgres:
-    image: postgres:17-alpine
+  mysql:
+    image: mysql:8.4
     restart: unless-stopped
     environment:
-      POSTGRES_DB: tasken
-      POSTGRES_USER: tasken
-      POSTGRES_PASSWORD: development
+      MYSQL_DATABASE: tasken
+      MYSQL_USER: tasken
+      MYSQL_PASSWORD: development
+      MYSQL_ROOT_PASSWORD: development
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql-data:/var/lib/mysql
     networks:
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tasken -d tasken"]
-      interval: 5s
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   proxy:
     image: nginx:stable-alpine
@@ -97,11 +103,7 @@ services:
       frontend:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -q -O /dev/null http://127.0.0.1/up || exit 1"
-        ]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/up || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -115,5 +117,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
-    name: tasken_postgres_data
+  mysql-data:

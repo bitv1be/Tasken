@@ -12,15 +12,12 @@ RUN apk add --no-cache \
         icu-libs \
         fcgi \
         libzip \
-	    libpq \
         && apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
         icu-dev \
         libzip-dev \
-	postgresql-dev \
     && docker-php-ext-install -j"$(nproc)" \
-        pdo_pgsql \
-        pgsql \
+        pdo_mysql \
         bcmath \
         intl \
         pcntl \
