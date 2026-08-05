@@ -1,15 +1,22 @@
-name: Build Images
+name: Build and Deploy
 
 on:
+  pull_request:
+    branches:
+      - main
+
   push:
+    branches:
+      - main
+
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   lint:
@@ -27,7 +34,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version-file: "./frontend/.bun-version"
+          bun-version-file: ./frontend/.bun-version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -39,9 +46,10 @@ jobs:
         run: bun run type-check
 
   test:
-    name: Test
+    name: Frontend Tests
     runs-on: ubuntu-latest
-    needs: [lint]
+    needs:
+      - lint
 
     defaults:
       run:
@@ -54,19 +62,26 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version-file: "./frontend/.bun-version"
+          bun-version-file: ./frontend/.bun-version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Test
+      - name: Run tests
         run: bun run test
 
   docker-publish:
     name: Build and Push ${{ matrix.service }}
     runs-on: ubuntu-latest
-    environment: production
-    needs: [test]
+    needs:
+      - test
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -101,8 +116,11 @@ jobs:
         with:
           images: ${{ matrix.image }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,format=short,prefix=sha-
+            type=raw,value=${{ github.sha }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       - name: Build and push ${{ matrix.service }} image
         uses: docker/build-push-action@v7
@@ -110,38 +128,125 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: true
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs:
+      - docker-publish
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    environment:
+      name: production
+      url: https://tasken.ru
+
+    concurrency:
+      group: tasken-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
       - name: Configure SSH
         env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          set -Eeuo pipefail
+
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" \
+            | tr -d '\r' \
+            > ~/.ssh/tasken_deploy
+
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" \
+            > ~/.ssh/known_hosts
+
+          chmod 600 ~/.ssh/tasken_deploy
           chmod 600 ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host tasken-production
+              HostName ${DEPLOY_HOST}
+              User ${DEPLOY_USER}
+              Port ${DEPLOY_PORT}
+              IdentityFile ~/.ssh/tasken_deploy
+              IdentitiesOnly yes
+              StrictHostKeyChecking yes
+              UserKnownHostsFile ~/.ssh/known_hosts
+              ServerAliveInterval 30
+              ServerAliveCountMax 3
+          EOF
+
+          chmod 600 ~/.ssh/config
+
+      - name: Test SSH connection
+        run: |
+          ssh tasken-production \
+            'printf "SSH connection successful\n"'
 
       - name: Upload Compose configuration
         run: |
           scp \
-            -P "${{ secrets.DEPLOY_PORT }}" \
             deploy/compose.yml \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/tasken/compose.yml"
+            tasken-production:/opt/tasken/compose.yml
 
       - name: Deploy
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          ssh \
-            -p "${{ secrets.DEPLOY_PORT }}" \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "cd /opt/tasken && \
-            printf 'IMAGE_TAG=%s\n' '${{ github.sha }}' > .deploy.env && \
-            docker compose --env-file .deploy.env --env-file .env pull && \
-            docker compose --env-file .deploy.env --env-file .env run --rm backend php artisan migrate --force && \
-            docker compose --env-file .deploy.env --env-file .env up -d --remove-orphans && \
-            curl --fail --retry 10 --retry-delay 3 http://127.0.0.1/up"
+          ssh tasken-production \
+            "IMAGE_TAG='$IMAGE_TAG' bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+
+          cd /opt/tasken
+          umask 077
+
+          printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" > .deploy.env
+
+          compose() {
+            docker compose \
+              --env-file .env \
+              --env-file .deploy.env \
+              "$@"
+          }
+
+          echo "Validating Compose configuration..."
+          compose config --quiet
+
+          echo "Pulling images tagged $IMAGE_TAG..."
+          compose pull
+
+          echo "Running Laravel migrations..."
+          compose run --rm backend \
+            php artisan migrate --force
+
+          echo "Starting containers..."
+          compose up -d --remove-orphans
+
+          echo "Waiting for application..."
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 15 \
+            --retry-delay 3 \
+            --retry-connrefused \
+            http://127.0.0.1/up
+
+          echo
+          echo "Deployment successful: $IMAGE_TAG"
+
+          compose ps
+          REMOTE
