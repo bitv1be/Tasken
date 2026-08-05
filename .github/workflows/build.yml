@@ -198,9 +198,15 @@ jobs:
 
       - name: Upload Compose configuration
         run: |
-          scp \
-            deploy/compose.yml \
-            tasken-production:/opt/tasken/compose.yml
+          set -Eeuo pipefail
+
+          ssh tasken-production \
+            'set -Eeuo pipefail
+             cd /opt/tasken
+             umask 077
+             cat > compose.yml.tmp
+             mv compose.yml.tmp compose.yml' \
+            < deploy/compose.yml
 
       - name: Deploy
         env:
