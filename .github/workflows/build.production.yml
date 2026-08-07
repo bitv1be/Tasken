@@ -191,7 +191,7 @@ jobs:
 
           echo "Uploading compose.production.yml..."
 
-          ssh tasken-development \
+          ssh tasken-production \
             'set -Eeuo pipefail
             cd /opt/tasken
             umask 077
@@ -202,7 +202,7 @@ jobs:
           echo "Uploading infrastructure..."
 
           tar -C . -czf - infrastructure \
-            | ssh tasken-development '
+            | ssh tasken-production '
                 set -Eeuo pipefail
                 cd /opt/tasken
 
