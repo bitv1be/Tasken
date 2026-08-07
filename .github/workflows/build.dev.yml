@@ -83,12 +83,12 @@ jobs:
           - service: frontend
             context: ./frontend
             dockerfile: ./frontend/Dockerfile
-            image: ghcr.io/${{ github.repository }}-frontend-dev
+            image: ghcr.io/${{ github.repository }}-frontend
 
           - service: backend
             context: ./backend
             dockerfile: ./backend/Dockerfile
-            image: ghcr.io/${{ github.repository }}-backend-dev
+            image: ghcr.io/${{ github.repository }}-backend
 
     steps:
       - name: Checkout repository
