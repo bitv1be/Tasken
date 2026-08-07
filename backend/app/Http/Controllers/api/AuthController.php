@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\UserLoginRequest;
 use App\Http\Requests\UserSingUpRequest;
 use App\Models\User;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -22,14 +23,10 @@ class AuthController extends Controller
             'password' => Hash::make($data['password']),
         ]);
 
-        $token = $user
-            ->createToken($data['device_name'] ?? 'default-device')
-            ->plainTextToken;
+        event(new Registered($user));
 
         return response()->json([
-            'message' => 'User successfully registered.',
-            'token' => $token,
-            'token_type' => 'Bearer',
+            'message' => 'Account created. Check your email to verify your address.',
             'user' => $this->userData($user),
         ], Response::HTTP_CREATED);
     }
@@ -50,6 +47,12 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Invalid email or password.',
             ], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (! $user->hasVerifiedEmail()) {
+            return response()->json([
+                'message' => 'Verify your email address before signing in.',
+            ], Response::HTTP_FORBIDDEN);
         }
 
         $token = $user
@@ -98,6 +101,7 @@ class AuthController extends Controller
         return [
             'id' => $user->id,
             'email' => $user->email,
+            'email_verified_at' => $user->email_verified_at,
             'created_at' => $user->created_at,
             'updated_at' => $user->updated_at,
         ];

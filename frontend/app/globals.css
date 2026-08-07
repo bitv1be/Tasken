@@ -109,6 +109,11 @@ textarea:focus-visible {
   color: #71717a;
 }
 
+.verification-email {
+  color: #18181b;
+  overflow-wrap: anywhere;
+}
+
 .eyebrow {
   color: #71717a;
 

@@ -15,6 +15,7 @@ import {
   authApi,
   type LoginData,
   type SignupData,
+  type SignupResponse,
   type User,
 } from '@/app/lib/api';
 
@@ -27,7 +28,7 @@ interface AuthContextValue {
   loading: boolean;
 
   login: (data: LoginData) => Promise<void>;
-  signup: (data: SignupData) => Promise<void>;
+  signup: (data: SignupData) => Promise<SignupResponse>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
 }
@@ -118,12 +119,10 @@ export function AuthProvider({
   );
 
   const signup = useCallback(
-    async (data: SignupData): Promise<void> => {
-      const response = await authApi.signup(data);
-
-      saveAuth(response.token, response.user);
+    async (data: SignupData): Promise<SignupResponse> => {
+      return authApi.signup(data);
     },
-    [saveAuth],
+    [],
   );
 
   const logout = useCallback(async (): Promise<void> => {

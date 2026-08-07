@@ -6,8 +6,8 @@ import {
 } from 'react';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
+import { EmailVerificationNotice } from '@/app/components/auth/EmailVerificationNotice';
 import { useAuth } from '@/app/context/AuthContext';
 
 import {
@@ -16,7 +16,6 @@ import {
 } from '@/app/lib/api';
 
 export default function SignupPage() {
-  const router = useRouter();
   const { signup } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -33,6 +32,8 @@ export default function SignupPage() {
     useState<LaravelValidationErrors>({});
 
   const [submitting, setSubmitting] = useState(false);
+  const [registeredEmail, setRegisteredEmail] =
+    useState('');
 
   async function handleSubmit(
     event: SubmitEvent,
@@ -55,14 +56,14 @@ export default function SignupPage() {
     setSubmitting(true);
 
     try {
-      await signup({
+      const response = await signup({
         email,
         password,
         password_confirmation: passwordConfirmation,
         device_name: navigator.userAgent.slice(0, 255),
       });
 
-      router.replace('/dashboard');
+      setRegisteredEmail(response.user.email);
     } catch (caughtError) {
       if (caughtError instanceof ApiError) {
         setError(caughtError.message);
@@ -73,6 +74,16 @@ export default function SignupPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (registeredEmail) {
+    return (
+      <main className="page-center">
+        <EmailVerificationNotice
+          email={registeredEmail}
+        />
+      </main>
+    );
   }
 
   return (

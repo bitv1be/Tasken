@@ -1,13 +1,15 @@
 'use client';
 
 import {
+  use,
   useState,
-  type SubmitEvent
+  type SubmitEvent,
 } from 'react';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
+import { EmailVerificationNotice } from '@/app/components/auth/EmailVerificationNotice';
 import { useAuth } from '@/app/context/AuthContext';
 
 import {
@@ -15,9 +17,18 @@ import {
   type LaravelValidationErrors,
 } from '@/app/lib/api';
 
-export default function LoginPage() {
+interface LoginPageProps {
+  searchParams: Promise<{
+    verified?: string | string[];
+  }>;
+}
+
+export default function LoginPage({
+  searchParams,
+}: LoginPageProps) {
   const router = useRouter();
   const { login } = useAuth();
+  const { verified } = use(searchParams);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,6 +38,8 @@ export default function LoginPage() {
     useState<LaravelValidationErrors>({});
 
   const [submitting, setSubmitting] = useState(false);
+  const [verificationEmail, setVerificationEmail] =
+    useState('');
 
   async function handleSubmit(
     event: SubmitEvent,
@@ -47,6 +60,12 @@ export default function LoginPage() {
       router.replace('/dashboard');
     } catch (caughtError) {
       if (caughtError instanceof ApiError) {
+        if (caughtError.status === 403) {
+          setVerificationEmail(email);
+
+          return;
+        }
+
         setError(caughtError.message);
         setFieldErrors(caughtError.errors);
       } else {
@@ -55,6 +74,19 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (verificationEmail) {
+    return (
+      <main className="page-center">
+        <EmailVerificationNotice
+          email={verificationEmail}
+          onBack={() => {
+            setVerificationEmail('');
+          }}
+        />
+      </main>
+    );
   }
 
   return (
@@ -75,6 +107,12 @@ export default function LoginPage() {
         {error && (
           <div className="alert error">
             {error}
+          </div>
+        )}
+
+        {verified === '1' && (
+          <div className="alert success" role="status">
+            Email подтверждён. Теперь вы можете войти.
           </div>
         )}
 

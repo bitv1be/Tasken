@@ -1,6 +1,7 @@
 export interface User {
   id: number;
   email: string;
+  email_verified_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -13,6 +14,11 @@ export interface AuthResponse {
   message: string;
   token: string;
   token_type: 'Bearer';
+  user: User;
+}
+
+export interface SignupResponse {
+  message: string;
   user: User;
 }
 
@@ -169,11 +175,23 @@ function createApiError(
 }
 
 export const authApi = {
-  signup(data: SignupData): Promise<AuthResponse> {
-    return apiRequest<AuthResponse>('/auth/signup', {
+  signup(data: SignupData): Promise<SignupResponse> {
+    return apiRequest<SignupResponse>('/auth/signup', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  resendVerification(
+    email: string,
+  ): Promise<{ message: string }> {
+    return apiRequest<{ message: string }>(
+      '/auth/email/verification-notification',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      },
+    );
   },
 
   login(data: LoginData): Promise<AuthResponse> {
