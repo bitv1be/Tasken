@@ -1,0 +1,194 @@
+services:
+  frontend:
+    image: ghcr.io/bitv1be/tasken-frontend:${IMAGE_TAG:-latest-dev}
+    restart: unless-stopped
+    networks:
+      - nginx
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  backend:
+    image: ghcr.io/bitv1be/tasken-backend:${IMAGE_TAG:-latest-dev}
+    restart: unless-stopped
+    env_file:
+      - .backend.env
+    environment:
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${MYSQL_DATABASE}
+      DB_USERNAME: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+    networks:
+      - nginx
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "SCRIPT_NAME=/ping SCRIPT_FILENAME=/ping REQUEST_METHOD=GET cgi-fcgi -bind -connect 127.0.0.1:9000 2>/dev/null | grep -q pong",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./infrastructure/mysql/my.cnf:/etc/mysql/conf.d/production.cnf:ro
+    networks:
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  backup:
+    image: databack/mysql-backup:latest
+    command: ["dump"]
+    restart: unless-stopped
+    environment:
+      DB_SERVER: mysql
+      DB_PORT: "3306"
+      DB_USER: ${MYSQL_USER}
+      DB_PASS: ${MYSQL_PASSWORD}
+      DB_DUMP_INCLUDE: ${MYSQL_DATABASE}
+      DB_DUMP_TARGET: /backups
+      DB_DUMP_BEGIN: "0200"
+      DB_DUMP_FREQUENCY: "1440"
+      DB_DUMP_RETENTION: "7d"
+      DB_DUMP_SAFECHARS: "true"
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./backups:/backups
+    networks:
+      - backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  proxy:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - nginx
+    volumes:
+      - ./infrastructure/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./infrastructure/certbot/www:/var/www/certbot:ro
+      - ./infrastructure/certbot/conf:/etc/letsencrypt:ro
+
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q -O /dev/null https://dev.tasken.ru/up || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        (
+          while true; do
+            sleep 6h
+            nginx -t && nginx -s reload
+          done
+        ) &
+
+        exec nginx -g 'daemon off;'
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    networks:
+      - nginx
+    volumes:
+      - ./infrastructure/certbot/www:/var/www/certbot
+      - ./infrastructure/certbot/conf:/etc/letsencrypt
+    depends_on:
+      proxy:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        trap exit TERM
+
+        while true; do
+          certbot renew \
+            --webroot \
+            --webroot-path=/var/www/certbot \
+            --quiet
+
+          sleep 12h & wait $$!
+        done
+
+  certbot-init:
+    image: certbot/certbot:latest
+    restart: "no"
+    profiles:
+      - certbot-init
+    networks:
+      - nginx
+    volumes:
+      - ./infrastructure/certbot/www:/var/www/certbot
+      - ./infrastructure/certbot/conf:/etc/letsencrypt
+    depends_on:
+      proxy:
+        condition: service_healthy
+    command:
+      - certonly
+      - --webroot
+      - --webroot-path=/var/www/certbot
+      - --email=${CERTBOT_EMAIL}
+      - --agree-tos
+      - --no-eff-email
+      - --non-interactive
+      - --domain=${DOMAIN:-tasken.ru}
+
+networks:
+  backend:
+    driver: bridge
+
+  nginx:
+    driver: bridge
+
+volumes:
+  mysql-data:
