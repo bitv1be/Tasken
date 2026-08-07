@@ -208,20 +208,24 @@ jobs:
                 set -Eeuo pipefail
                 cd /opt/tasken
 
-                rm -rf infrastructure.tmp
-                mkdir -p infrastructure.tmp
+                mkdir -p infrastructure
 
-                tar -xzf - -C infrastructure.tmp --strip-components=1
+                find infrastructure \
+                  -mindepth 1 \
+                  -maxdepth 1 \
+                  ! -name certbot \
+                  -exec rm -rf {} +
 
-                rm -rf infrastructure.old
+                mkdir -p infrastructure/certbot
 
-                if [ -d infrastructure ]; then
-                  mv infrastructure infrastructure.old
-                fi
+                find infrastructure/certbot \
+                  -mindepth 1 \
+                  -maxdepth 1 \
+                  ! -name conf \
+                  ! -name www \
+                  -exec rm -rf {} +
 
-                mv infrastructure.tmp infrastructure
-
-                rm -rf infrastructure.old
+                tar -xzf -
               '
 
           echo "Deployment files uploaded successfully"
