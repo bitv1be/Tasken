@@ -1,0 +1,119 @@
+[client]
+default-character-set = utf8mb4
+
+[mysql]
+default-character-set = utf8mb4
+
+[mysqld]
+# -------------------------------------------------------
+# Base
+# -------------------------------------------------------
+port = 3306
+bind-address = 0.0.0.0
+
+default-storage-engine = InnoDB
+character-set-server = utf8mb4
+collation-server = utf8mb4_0900_ai_ci
+
+default-time-zone = "+00:00"
+log-timestamps = UTC
+
+skip-name-resolve = ON
+local-infile = OFF
+symbolic-links = 0
+
+# MySQL делит сервер с Laravel, Next.js и Docker.
+innodb-dedicated-server = OFF
+
+# -------------------------------------------------------
+# Connections
+# -------------------------------------------------------
+max-connections = 30
+max-connect-errors = 100
+back-log = 50
+
+connect-timeout = 10
+wait-timeout = 120
+interactive-timeout = 120
+
+thread-cache-size = 8
+
+# -------------------------------------------------------
+# Per-connection memory
+# -------------------------------------------------------
+max-allowed-packet = 32M
+
+sort-buffer-size = 256K
+join-buffer-size = 256K
+read-buffer-size = 256K
+read-rnd-buffer-size = 256K
+
+# -------------------------------------------------------
+# Temporary tables
+# -------------------------------------------------------
+tmp-table-size = 8M
+max-heap-table-size = 8M
+
+# В MySQL 8.4 стандартный лимит TempTable может иметь
+# минимальное автоматическое значение 1 ГБ, поэтому
+# на маленьком сервере задаём ограничение вручную.
+temptable-max-ram = 32M
+temptable-max-mmap = 0
+
+# -------------------------------------------------------
+# InnoDB
+# -------------------------------------------------------
+innodb-buffer-pool-size = 128M
+
+innodb-redo-log-capacity = 128M
+innodb-log-buffer-size = 8M
+
+# Максимальная сохранность подтверждённых транзакций.
+innodb-flush-log-at-trx-commit = 1
+innodb-flush-method = O_DIRECT
+
+innodb-file-per-table = ON
+
+innodb-buffer-pool-dump-at-shutdown = ON
+innodb-buffer-pool-load-at-startup = ON
+
+# -------------------------------------------------------
+# Table cache
+# -------------------------------------------------------
+table-open-cache = 256
+table-definition-cache = 400
+open-files-limit = 4096
+
+# -------------------------------------------------------
+# Performance Schema
+# -------------------------------------------------------
+# Экономит память, но уменьшает возможности диагностики.
+performance-schema = OFF
+
+# -------------------------------------------------------
+# Binary log
+# Нужен для point-in-time recovery.
+# -------------------------------------------------------
+server-id = 1
+log-bin = binlog
+binlog-format = ROW
+sync-binlog = 1
+
+# Хранить binlog 3 дня.
+binlog-expire-logs-seconds = 259200
+max-binlog-size = 64M
+
+# -------------------------------------------------------
+# Slow query log
+# -------------------------------------------------------
+slow-query-log = ON
+slow-query-log-file = /var/lib/mysql/slow-query.log
+
+long-query-time = 1
+min-examined-row-limit = 100
+log-queries-not-using-indexes = OFF
+
+# -------------------------------------------------------
+# SQL mode
+# -------------------------------------------------------
+sql-mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
