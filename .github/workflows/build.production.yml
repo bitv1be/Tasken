@@ -201,7 +201,9 @@ jobs:
 
           echo "Uploading infrastructure..."
 
-          tar -C . -czf - infrastructure \
+          tar \
+            --exclude='infrastructure/certbot' \
+            -czf - infrastructure \
             | ssh tasken-production '
                 set -Eeuo pipefail
                 cd /opt/tasken
